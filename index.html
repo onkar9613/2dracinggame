@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Zen's Racing Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: url('assets/road.png') repeat-y;
+      background-size: cover;
+    }
+    #gameOverScreen {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      color: white;
+      text-align: center;
+      z-index: 2;
+    }
+    #gameOverScreen button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      background-color: #28a745;
+      color: white;
+      cursor: pointer;
+    }
+    .mobile-controls {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 40px;
+      z-index: 10;
+    }
+    .mobile-controls button {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      font-size: 24px;
+      background-color: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <div id="gameOverScreen">
+    <h2>Game Over</h2>
+    <p>Your Score: <span id="finalScore"></span></p>
+    <button onclick="resetGame()">Restart Game Noob driver </button>
+  </div>
+  <div class="mobile-controls">
+    <button onclick="player.moveLeft()">⬅️</button>
+    <button onclick="player.moveRight()">➡️</button>
+  </div>
+const collisionSound = new Audio('assets/collision.mp3'); 
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let gameOver = false;
+    let gameStarted = false;
+    let score = 0;
+    let timer = 30;
+    let frames = 0;
+    const roadImg = new Image();
+    roadImg.src = 'assets/road.png';
+
+    const playerCarImg = new Image();
+    playerCarImg.src = 'assets/playercar.png';
+
+    const enemyCarImg = new Image();
+    enemyCarImg.src = 'assets/enemycar.png';
+
+    const timePickupImg = new Image();
+    timePickupImg.src = 'assets/clockicon';
+
+    const boostPickupImg = new Image();
+    boostPickupImg.src = 'https://4.imimg.com/data4/XX/IC/MY-23130542/nitrous-oxide-500x500.jpg';
+
+    const collisionSound = new Audio('assets/collision.mp3');
+
+    const laneCount = 4;
+    const laneWidth = canvas.width / laneCount;
+    const lanePositions = [laneWidth * 0.1, laneWidth * 1.1, laneWidth * 2.1, laneWidth * 3.1];
+    let currentLane = 1;
+    let targetX = lanePositions[currentLane];
+
+    const player = {
+      x: lanePositions[currentLane],
+      y: 470,
+      width: 100,
+      height: 100,
+      draw() {
+        ctx.drawImage(playerCarImg, this.x, this.y, this.width, this.height);
+      },
+      update() {
+        const dx = targetX - this.x;
+        this.x += dx * 0.2;
+      },
+      moveLeft() {
+        if (currentLane > 0) {
+          currentLane--;
+          targetX = lanePositions[currentLane];
+        }
+      },
+      moveRight() {
+        if (currentLane < laneCount - 1) {
+          currentLane++;
+          targetX = lanePositions[currentLane];
+        }
+      },
+      reset() {
+        currentLane = 1;
+        targetX = lanePositions[currentLane];
+        this.x = targetX;
+        this.y = 470;
+      }
+    };
+
+    let enemies = [], boosts = [], timePickups = [], speedMultiplier = 1, bgY = 0;
+
+    function drawBackground() {
+      bgY += 2;
+      ctx.drawImage(roadImg, 0, bgY % canvas.height - canvas.height, canvas.width, canvas.height);
+      ctx.drawImage(roadImg, 0, bgY % canvas.height, canvas.width, canvas.height);
+    }
+
+    function createEnemy() {
+      const lane = Math.floor(Math.random() * laneCount);
+      enemies.push({
+        lane,
+        x: lanePositions[lane],
+        y: -120,
+        width: 70,
+        height: 90,
+        speed: 10 + Math.random() * 2,
+        changeTimer: Math.floor(Math.random() * 100 + 60)
+      });
+    }
+
+    function updateEnemies() {
+      enemies.forEach((e, i) => {
+        e.y += e.speed * speedMultiplier;
+        e.changeTimer--;
+        if (e.changeTimer <= 0) {
+          const newLane = Math.floor(Math.random() * laneCount);
+          e.x = lanePositions[newLane];
+          e.changeTimer = Math.floor(Math.random() * 100 + 60);
+        }
+        if (
+          e.y + e.height > player.y &&
+          e.y < player.y + player.height &&
+          e.x < player.x + player.width &&
+          e.x + e.width > player.x
+        ) triggerGameOver();
+        if (e.y > canvas.height) enemies.splice(i, 1);
+      });
+    }
+
+    function drawEnemies() {
+      enemies.forEach(e => ctx.drawImage(enemyCarImg, e.x, e.y, e.width, e.height));
+    }
+
+    function createTimePickup() {
+      timePickups.push({
+        x: lanePositions[Math.floor(Math.random() * laneCount)] + 10,
+        y: -40,
+        size: 30,
+        speed: 3
+      });
+    }
+
+    function updateTimePickups() {
+      timePickups.forEach((tp, i) => {
+        tp.y += tp.speed;
+        if (
+          tp.y + tp.size > player.y &&
+          tp.y < player.y + player.height &&
+          tp.x < player.x + player.width &&
+          tp.x + tp.size > player.x
+        ) {
+          timer += 5;
+          timePickups.splice(i, 1);
+        }
+        if (tp.y > canvas.height) timePickups.splice(i, 1);
+      });
+    }
+
+    function drawTimePickups() {
+      timePickups.forEach(tp => ctx.drawImage(timePickupImg, tp.x, tp.y, tp.size, tp.size));
+    }
+
+    function triggerGameOver() {
+  if (!gameOver) {
+    collisionSound.play(); 
+    gameOver = true;
+    document.getElementById("finalScore").textContent = Math.floor(score);
+    document.getElementById("gameOverScreen").style.display = "block";
+  }
+}
+
+
+    function resetGame() {
+      gameOver = false;
+      gameStarted = false;
+      document.getElementById("gameOverScreen").style.display = "none";
+      enemies = [];
+      timePickups = [];
+      player.reset();
+      score = 0;
+      timer = 60;
+      frames = 0;
+      speedMultiplier = 1;
+      loop();
+    }
+
+    function update() {
+      if (!gameOver) {
+        frames++;
+        player.update();
+        score += 0.05;
+        timer -= 1 / 60;
+        if (timer <= 0) triggerGameOver();
+        if (frames % 90 === 0) createEnemy();
+        if (frames % 300 === 0) createTimePickup();
+        updateEnemies();
+        updateTimePickups();
+        speedMultiplier += 0.0005;
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      player.draw();
+      drawEnemies();
+      drawTimePickups();
+      ctx.fillStyle = "#fff";
+      ctx.font = "20px Arial";
+      ctx.fillText("Score: " + Math.floor(score), 10, 30);
+      ctx.fillText("Time: " + Math.floor(timer), 300, 30);
+    }
+
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      update();
+      draw();
+      if (!gameOver) requestAnimationFrame(loop);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a") player.moveLeft();
+      if (e.key === "ArrowRight" || e.key === "d") player.moveRight();
+      if (!gameStarted) { gameStarted = true; loop(); }
+    });
+  </script>
+</body>
+</html>
